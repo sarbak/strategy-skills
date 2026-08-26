@@ -1,6 +1,6 @@
 # Strategy Skills for Claude Code
 
-Five skills that turn Claude Code into a structured strategy and growth toolkit. Strategy analysis, SEO/GEO optimization, and product analytics — all as reusable slash commands.
+Six skills that turn Claude Code into a structured strategy and growth toolkit. Strategy analysis, SEO/GEO optimization, product analytics, and content from your own meetings, all as reusable slash commands.
 
 Built by [Emotion Machine](https://emotionmachine.com).
 
@@ -26,6 +26,9 @@ Requires a [DataForSEO](https://dataforseo.com) account for API-based keyword re
 
 #### `/analytics-review` (8 steps)
 Pull PostHog funnel metrics and Supabase/Postgres usage data, compare against saved baselines, correlate with PRs/deploys, and surface actionable insights. Works with any PostHog + Postgres project.
+
+#### `/linkedin-from-meetings` (10 steps)
+Turn meeting notes and call transcripts into scheduled LinkedIn drafts. Finds your notes wherever they live (a folder of markdown, Granola, Fathom, Fireflies, Otter, Notion, Obsidian, Google Docs, a database table), mines them for insights only you could have, scores each on specific / contested / earned, runs a four-check confidentiality gate before anything about a client leaves the room, and drafts in a voice extracted from your own past posts. Drafts only, never posts.
 
 ## How the strategy skills work together
 
@@ -63,16 +66,17 @@ Each skill also works independently.
 
 ### Claude Code (global)
 ```bash
-# Install all five
+# Install all six
 claude skills add sarbak/strategy-skills@opportunity-analysis -g
 claude skills add sarbak/strategy-skills@deep-research -g
 claude skills add sarbak/strategy-skills@storyline-synthesis -g
 claude skills add sarbak/strategy-skills@seo-geo -g
 claude skills add sarbak/strategy-skills@analytics-review -g
+claude skills add sarbak/strategy-skills@linkedin-from-meetings -g
 ```
 
 ### Manual
-Copy the `SKILL.md` file from any skill folder into `~/.claude/skills/<skill-name>/SKILL.md`.
+Copy the `SKILL.md` file from any skill folder into `~/.claude/skills/<skill-name>/SKILL.md`. `linkedin-from-meetings` also ships a `reference/` folder, so copy that whole directory.
 
 ## Setup
 
@@ -84,6 +88,9 @@ Reads PostHog and database credentials from your environment variables or projec
 
 ### `/deep-research`
 Works with any research tool in your Claude Code environment — Perplexity MCP, web search, etc.
+
+### `/linkedin-from-meetings`
+Needs three things from you on the first run: a line or two describing what you do and who you sell to, where your meeting notes live, and access to your own past LinkedIn posts so the skill can extract your voice. Nothing is hardcoded, and no credentials live in the skill.
 
 ## Step numbering
 
@@ -112,6 +119,12 @@ All skills use explicit step numbering (`Step 3/18`, `Step 1e/6`, etc.) so Claud
 | File | Purpose |
 |------|---------|
 | Memory baseline file | Snapshot of metrics for future comparison |
+
+### `/linkedin-from-meetings`
+| File | Purpose |
+|------|---------|
+| `linkedin-drafts/<date>-week.md` | Scheduled drafts, sources, confidentiality verdicts, backlog |
+| `reference/<user>-post-style.md` | Your voice, extracted once from your own posts and reused every run |
 
 ## Design principles
 
