@@ -40,9 +40,18 @@ something to the reader rather than asking them anything.
 
 Five moves, in this order. Most of his good posts use four or five of them.
 
-1. **Open on the situation he is personally in.** Not a hook, not a statistic, not
-   a provocation. A flat declarative about what he and his team are doing right
-   now. *"We are trying to find a good AEO/GEO/AI visibility tool to incorporate
+1. **Open on the thesis.** *(Stated preference, 2026-08-26. It overrides the
+   historical pattern below, which was to open on the situation.)* One sentence
+   carrying the claim the post exists to make, delivered flat, with no hook
+   engineering. It has to land for someone who has just scrolled past something
+   unrelated, so it names the domain, the actor and the stake on its own. Under
+   about 140 characters. His own best-performing post already did this without
+   meaning to: *"We are trying to find a good AEO/GEO/AI visibility tool to
+   incorporate into our Tin Computer platform but I am very disappointed with the
+   tools in the market"* puts the disappointment in sentence one.
+
+   The old pattern, kept because it explains the rest of his posts: he opened on a
+   flat declarative about what he and his team were doing right now. *"We are trying to find a good AEO/GEO/AI visibility tool to incorporate
    into our Tin Computer platform but I am very disappointed with the tools in the
    market."* *"We're open-sourcing our internal markdown editing + collaboration
    tool."* *"We had a great office-warming party + demo yesterday at our new
@@ -97,8 +106,11 @@ change register at all.
 
 ## Rules for drafting in this voice
 
-- Open flat. If a draft opens on a stat, move the stat to the second paragraph and
-  open on what he was doing when he found it.
+- **Thesis first, delivered flat.** The claim goes in sentence one and has to be
+  legible cold. Then the situation, then the evidence.
+- **Contractions on.** Chosen 2026-08-26 from a four-model comparison: he picked
+  the register with "don't", "isn't", "we've" over the fully spelled-out one. His
+  own posts use them, so this is his voice rather than a loosening of it.
 - Put the disagreement in explicitly. Say what people believe, then say why it is
   wrong. Do not imply it.
 - One widening sentence, maximum.
