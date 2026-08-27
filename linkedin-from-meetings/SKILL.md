@@ -195,14 +195,21 @@ every later run.
 
 ## Step 4/12 -- Extract candidate insights
 
-**4.0 Load the decision log first.** Read `DECISION_LOG` (default
-`OUTPUT_DIR/decisions.jsonl`) before scoring anything, and apply the rules in
-Step 7.4. Anything the user already rejected, and anything already drafted, never
-reaches the shortlist again. If the file does not exist yet, this is the first
-run: create it empty and carry on.
+**4.0 Filter against the decision log first**, before scoring anything. The log is
+run by `decisions.py` in this skill directory. Build the raw candidate list as
+JSON, one object per candidate with a `claim` string and a `sources` array, then:
 
-For each meeting read, ask one question: **what did someone say here that a smart
-person working in this field does not already believe?**
+```bash
+S=<skill-dir>/decisions.py
+python3 $S --path "$DECISION_LOG" init          # no-op if it already exists
+python3 $S --path "$DECISION_LOG" filter --in candidates.json > filtered.json
+```
+
+`filtered.json` has two keys. `candidates` are still live, each with a stable
+`key` filled in, and anything previously deferred tagged `previously_deferred`
+with the note that held it. `dropped` are already rejected or already drafted,
+each with the reason. Score only the survivors, and report the dropped list in the
+run summary rather than discarding it quietly.
 
 **4.1 Score each candidate 0-3 on three axes.**
 
@@ -344,50 +351,70 @@ record it.
 Do not ask a fifth question about whether to proceed. Once the batch is answered,
 draft the approved ones.
 
-**7.3 Write every verdict to the decision log.** The log is append-only JSONL at
-`DECISION_LOG` (default `OUTPUT_DIR/decisions.jsonl`). One line per verdict:
+**7.3 Write every verdict to the decision log.** Append one row per verdict:
 
-```json
-{"key":"attribution-5-vs-55","claim":"Analytics say 5% from AI, users say 55%","sources":["2026-08-14-206","2026-08-12-210"],"shape":"contradicts-dashboard","score":9,"verdict":"approved","note":"","decided":"2026-08-26","drafted":"2026-08-26-week.md"}
+```bash
+python3 $S --path "$DECISION_LOG" record \
+  --claim "Analytics say 5% from AI, users say 55%" \
+  --sources 2026-08-20-rob,2026-08-21-ryan \
+  --shape contradicts-dashboard --score 9 --verdict approved --note ""
 ```
 
-- `key` is a stable slug of the claim. Build it from the two or three content words
-  that carry the insight, not from the phrasing, so a reworded version of the same
-  insight still matches.
-- `sources` holds the meeting file ids from Step 2.3, so a candidate traces back to
-  the calls it came from whichever tool produced those notes.
-- `verdict` is one of `approved`, `rejected`, `deferred`.
-- `note` holds the user's "Other" text verbatim when there is one.
-- `drafted` names the file the post landed in. Step 11 fills it, and it stays empty
-  for anything the user declined.
+`--verdict` is `approved`, `rejected` or `deferred`. `--note` carries the user's
+"Other" text verbatim, or the reason a candidate is being held. The key derives
+from the claim, so it does not need passing. `record` refuses a key already in the
+log, which is what stops a re-run duplicating rows.
 
-Append with a heredoc rather than rewriting the file, so a crash mid-run cannot
-lose earlier decisions.
+The log is append-only JSONL. One row:
 
-**7.4 Read the log before every run, not after.** This step exists so the same
-question stops coming back. Load the log at the **start of Step 4**, before scoring
-anything, and apply it:
+```json
+{"key":"attribution-5-vs-55","claim":"Analytics attribute 5% of signups to AI, users asked directly say 55% ChatGPT","sources":["2026-08-20-rob","2026-08-21-ryan"],"shape":"contradicts-dashboard","score":9,"verdict":"approved","note":"","decided":"2026-08-26","drafted":"2026-08-26-week.md"}
+```
 
-- **`rejected`**: drop the candidate silently. Do not present it, do not mention
-  it, do not put it in the backlog.
-- **`approved` with a `drafted` value**: already written. Drop it.
-- **`deferred`**: keep it, and mark it in the shortlist as `previously deferred` so
-  the user knows they have seen it before.
-- **Near-matches**: if a new candidate shares source ids with a logged one and most
-  of its content words, treat it as the same insight and apply the same rule. Say
-  so in the run report rather than guessing silently.
+`drafted` stays empty until Step 11 fills it in, and stays empty forever on
+anything the user declined.
 
-**7.5 Learn from the rejections.** Every few runs, read the `note` field across all
-`rejected` rows and look for a pattern. Three rejections that all turn out to be
-client pricing means client pricing belongs in the Step 4 filter rather than in a
-shortlist the user declines again.
+**7.4 What the filter decides.** Step 4.0 does the work. This is what it does, so
+you can sanity-check it.
+
+- **`rejected`**: dropped. Not presented, not mentioned, not put in the backlog.
+- **`approved` with a `drafted` value**: already written, so dropped.
+- **`deferred`**: kept and tagged, so the shortlist can say the user has seen it
+  and why it was held.
+- **Near matches**: a candidate counts as the same insight when it shares a source
+  with a logged row **and** at least 40% of the shorter claim's content words.
+  Both conditions have to hold. Overlap alone would merge two people saying
+  similar things in different calls, and a shared source alone would merge every
+  insight that came out of one meeting. Numbers count as content words, because
+  "5" against "55" is often the whole fingerprint of an insight.
+
+To check one candidate by hand:
+
+```bash
+python3 $S --path "$DECISION_LOG" check --claim "..." --sources 2026-08-20-rob
+```
+
+It prints `new`, `rejected`, `deferred` or `drafted` with the reason it matched.
+Exit code is 0 for new and 1 for anything already settled, so it drops into a
+shell condition.
+
+**7.5 Learn from the rejections.** Every few runs:
+
+```bash
+python3 $S --path "$DECISION_LOG" patterns
+```
+
+It prints every rejection with its note, then any term appearing in three or more
+of them. A repeated term is a candidate for a standing rule: three rejections that
+all turn out to be client pricing means client pricing should be filtered at
+Step 4 rather than offered and declined again.
 
 When a pattern is clear, write it into `reference/<user>-post-style.md` under a
-**Standing rejections** heading, with the dates that produced it. That file is read
-on every run, so the rule then applies without anyone having to remember it.
+**Standing rejections** heading, with the dates that produced it. That file is
+read on every run, so the rule then applies without anyone having to remember it.
 
-Do not infer a rule from a single rejection. One no is a judgment about one
-candidate.
+Never infer a rule from one rejection, and `patterns` will not suggest one. A
+single no is a judgment about a single candidate.
 
 ---
 
@@ -401,9 +428,13 @@ not the source.
 **8.2 Build each post on the architecture the style file recorded.** Where Step 3
 found too little to work from, this five-move default is a reasonable start:
 
-1. Open flat, on the situation the user is personally in. Not a hook, not a
-   statistic.
-2. Name the friction.
+1. **Open on the thesis.** One sentence carrying the claim the whole post exists
+   to make. Flat delivery, no hook engineering, but the point goes first rather
+   than being built towards. It has to make sense to someone who has just scrolled
+   past something unrelated, so it names the domain, the actor and the stake
+   without leaning on anything below it. Keep it under about 140 characters, which
+   is where mobile truncates.
+2. Then the situation the user is personally in, and the friction in it.
 3. Report what everyone else believes, then disagree with it. **Put the evidence
    here.** This is where the meetings pay off, and it is where most people's own
    posts are thinnest.
@@ -559,9 +590,12 @@ with the reason it was held.
 **11.4 Record the settings** at the top of the file so the next run can read
 `PROFILE`, `NOTES_SOURCE`, and the window back.
 
-**11.5 Fill in the `drafted` field** in `DECISION_LOG` for every candidate that
-made it into the file, naming the file the post landed in. Without this the next
-run offers the same insight again.
+**11.5 Close the loop** for every candidate that made it into the file, so the
+next run does not offer it again:
+
+```bash
+python3 $S --path "$DECISION_LOG" mark-drafted --key attribution-5-vs-55 --file 2026-08-26-week.md
+```
 
 ---
 
@@ -596,6 +630,9 @@ permission.
 
 ## Reference files
 
+- `decisions.py` -- the decision-log tool. `init`, `slug`, `check`, `filter`,
+  `record`, `mark-drafted`, `patterns`, `list`, `stats`. Run `--help` for the
+  full schema.
 - `OUTPUT_DIR/decisions.jsonl` -- the decision log. Read at Step 4, written at
   Step 7, closed out at Step 11. It sits with the drafts rather than in the skill
   directory, because it is data rather than instruction.
