@@ -4,11 +4,14 @@ description: >
   Turn meeting notes and call transcripts into scheduled LinkedIn drafts.
   Asks how far back to read and how many posts to produce, finds the user's
   meeting notes wherever they live, mines them for insights only that person
-  could have, gates every candidate for confidentiality, drafts in a voice
-  extracted from the user's own past posts, and lays the result out as a
-  schedule they can edit. Use when someone asks for LinkedIn posts from their
-  meetings or calls, a weekly posting schedule, content from meeting notes,
-  or "what should I post this week". Drafts only, never posts.
+  could have, gates every candidate for confidentiality, shows the shortlist and
+  asks for a yes or no on each one before drafting a word, drafts the approved
+  ones in a voice extracted from the user's own past posts, and lays the result
+  out as a schedule they can edit. Records every verdict in a decision log, so a
+  later run never offers the same insight twice. Use when someone asks for
+  LinkedIn posts from their meetings or calls, a weekly posting schedule,
+  content from meeting notes, or "what should I post this week". Drafts only,
+  never posts.
 user_invocable: true
 ---
 
@@ -22,10 +25,11 @@ anything and without burning the person on the other end of the call.
 composer, no third-party scheduler, no API. The output is a file the user edits
 and copies out.
 
-**This process has 10 steps. Complete every step in order. Do not skip steps.
-When reporting progress, label each step as shown (e.g., "Step 3/10").** Step 2
-and Step 7 are the two that cannot be skipped under any circumstance: one finds
-the raw material, the other keeps a client out of a lawsuit.
+**This process has 12 steps. Complete every step in order. Do not skip steps.
+When reporting progress, label each step as shown (e.g., "Step 3/12").** Step 2
+finds the raw material and Step 6 keeps a client out of a lawsuit; neither can be
+skipped under any circumstance. Step 7 asks the user which candidates to draft,
+and skipping it spends their review time on posts they never asked for.
 
 ---
 
@@ -41,11 +45,12 @@ guessing.
 | `NOTES_SOURCE` | Where meeting notes live. Resolved in Step 2. | must be resolved |
 | `POST_HISTORY` | The user's LinkedIn profile or activity URL, plus the style file extracted from it. | resolved in Step 3 |
 | `OUTPUT_DIR` | Where drafts are written. | `./linkedin-drafts/` |
+| `DECISION_LOG` | Append-only record of which candidates the user approved, rejected, or deferred. Read at the start of Step 4, written at Step 7, closed out at Step 11. | `OUTPUT_DIR/decisions.jsonl` |
 | `TASK_SINK` | Where the one follow-up task goes: a task file, an issue tracker, a note. | ask once, otherwise skip |
 
 ---
 
-## Step 1/10 -- Ask the two scoping questions
+## Step 1/12 -- Ask the two scoping questions
 
 Ask both in a single question round, before reading anything. Do not guess these.
 The answers change how much work every later step does.
@@ -71,7 +76,7 @@ Then proceed without another round of questions.
 
 ---
 
-## Step 2/10 -- Find where the meeting notes live
+## Step 2/12 -- Find where the meeting notes live
 
 Ask the user where their notes are and resolve `NOTES_SOURCE` before reading
 anything. Do not assume a tool. The recipes below cover the common cases.
@@ -114,7 +119,7 @@ suggests a strategy conversation rather than a routine sales call.
 
 ---
 
-## Step 3/10 -- Extract the user's voice from their own posts
+## Step 3/12 -- Extract the user's voice from their own posts
 
 This is the step that decides whether the output sounds like the user or like a
 LinkedIn ghostwriter. Run it in full on the first run. On later runs, read the
@@ -188,7 +193,13 @@ every later run.
 
 ---
 
-## Step 4/10 -- Extract candidate insights
+## Step 4/12 -- Extract candidate insights
+
+**4.0 Load the decision log first.** Read `DECISION_LOG` (default
+`OUTPUT_DIR/decisions.jsonl`) before scoring anything, and apply the rules in
+Step 7.4. Anything the user already rejected, and anything already drafted, never
+reaches the shortlist again. If the file does not exist yet, this is the first
+run: create it empty and carry on.
 
 For each meeting read, ask one question: **what did someone say here that a smart
 person working in this field does not already believe?**
@@ -225,7 +236,7 @@ a good meeting.
 
 ---
 
-## Step 5/10 -- Apply the lived-experience test
+## Step 5/12 -- Apply the lived-experience test
 
 Every candidate survives all five or it goes back.
 
@@ -253,7 +264,7 @@ not content. Throw it out and go back to the meetings.
 
 ---
 
-## Step 6/10 -- Run the confidentiality gate
+## Step 6/12 -- Run the confidentiality gate
 
 Every candidate passes all four checks. If any check is uncertain, the answer is
 no.
@@ -292,14 +303,102 @@ Never render a translated line as a quotation.
 
 ---
 
-## Step 7/10 -- Draft in the user's voice
+## Step 7/12 -- Show the candidates and get a verdict on each
 
-**7.1 Read `reference/<user>-post-style.md` before writing a word.** It carries
+Nothing gets drafted until the user has said yes to it. Drafting five posts they
+did not want spends their review time on the wrong thing, and the question costs
+little to ask here and a lot to unwind later.
+
+**7.1 Present the shortlist.** Show every candidate that survived Steps 4 through
+6 as a compact list. Per candidate: a short label, the claim in two or three
+sentences, and one line of metadata. Nothing else:
+
+```
+1. THE ATTRIBUTION NUMBER
+   Analytics say 5% of signups come from AI. Asked directly, 55% of users name
+   ChatGPT. People search the brand rather than clicking through, so the search
+   engine takes the referrer.
+   sources 2026-08-14-206, 2026-08-12-210, 2026-08-07-192
+   shape: contradicts-dashboard | score 9 | clear
+```
+
+No draft text yet. The user is judging the insight, not the writing.
+
+**7.2 Run the survey.** Use `AskUserQuestion`. It takes at most four questions per
+call, so present the candidates in batches of four, highest score first. One
+question per candidate, headed with a short label for that candidate. The question
+text is the candidate's one-line claim.
+
+Options, in this order:
+
+| Option | Means |
+|---|---|
+| **Looks good** | Draft it. |
+| **Not this one** | Do not draft it, and do not offer it again. |
+| **Later** | Keep it in the backlog and offer it again on a future run. |
+
+The tool adds "Other" itself, which is where the user says what they actually want
+changed. Treat any "Other" text as a drafting instruction for that candidate and
+record it.
+
+Do not ask a fifth question about whether to proceed. Once the batch is answered,
+draft the approved ones.
+
+**7.3 Write every verdict to the decision log.** The log is append-only JSONL at
+`DECISION_LOG` (default `OUTPUT_DIR/decisions.jsonl`). One line per verdict:
+
+```json
+{"key":"attribution-5-vs-55","claim":"Analytics say 5% from AI, users say 55%","sources":["2026-08-14-206","2026-08-12-210"],"shape":"contradicts-dashboard","score":9,"verdict":"approved","note":"","decided":"2026-08-26","drafted":"2026-08-26-week.md"}
+```
+
+- `key` is a stable slug of the claim. Build it from the two or three content words
+  that carry the insight, not from the phrasing, so a reworded version of the same
+  insight still matches.
+- `sources` holds the meeting file ids from Step 2.3, so a candidate traces back to
+  the calls it came from whichever tool produced those notes.
+- `verdict` is one of `approved`, `rejected`, `deferred`.
+- `note` holds the user's "Other" text verbatim when there is one.
+- `drafted` names the file the post landed in. Step 11 fills it, and it stays empty
+  for anything the user declined.
+
+Append with a heredoc rather than rewriting the file, so a crash mid-run cannot
+lose earlier decisions.
+
+**7.4 Read the log before every run, not after.** This step exists so the same
+question stops coming back. Load the log at the **start of Step 4**, before scoring
+anything, and apply it:
+
+- **`rejected`**: drop the candidate silently. Do not present it, do not mention
+  it, do not put it in the backlog.
+- **`approved` with a `drafted` value**: already written. Drop it.
+- **`deferred`**: keep it, and mark it in the shortlist as `previously deferred` so
+  the user knows they have seen it before.
+- **Near-matches**: if a new candidate shares source ids with a logged one and most
+  of its content words, treat it as the same insight and apply the same rule. Say
+  so in the run report rather than guessing silently.
+
+**7.5 Learn from the rejections.** Every few runs, read the `note` field across all
+`rejected` rows and look for a pattern. Three rejections that all turn out to be
+client pricing means client pricing belongs in the Step 4 filter rather than in a
+shortlist the user declines again.
+
+When a pattern is clear, write it into `reference/<user>-post-style.md` under a
+**Standing rejections** heading, with the dates that produced it. That file is read
+on every run, so the rule then applies without anyone having to remember it.
+
+Do not infer a rule from a single rejection. One no is a judgment about one
+candidate.
+
+---
+
+## Step 8/12 -- Draft in the user's voice
+
+**8.1 Read `reference/<user>-post-style.md` before writing a word.** It carries
 the narrative architecture and sentence habits from Step 3, with quoted examples.
 That file is the primary instrument. Generic writing guidance is the cleanup pass,
 not the source.
 
-**7.2 Build each post on the architecture the style file recorded.** Where Step 3
+**8.2 Build each post on the architecture the style file recorded.** Where Step 3
 found too little to work from, this five-move default is a reasonable start:
 
 1. Open flat, on the situation the user is personally in. Not a hook, not a
@@ -311,7 +410,7 @@ found too little to work from, this five-move default is a reasonable start:
 4. Widen once, briefly, usually on a parallel. Once per post, never twice.
 5. Close on a real question, or on an admission that they do not know.
 
-**7.3 Match the sentence habits from the style file.** Where the file is silent,
+**8.3 Match the sentence habits from the style file.** Where the file is silent,
 these defaults hold up on LinkedIn:
 
 - Flat and declarative. No fragments, no colon as a drumroll.
@@ -324,7 +423,7 @@ these defaults hold up on LinkedIn:
 - Concede readily. Never sound resolved.
 - No emoji, no hashtags, no em dashes.
 
-**7.4 Apply the two sentence-shape rules by hand.** These catch machine-written
+**8.4 Apply the two sentence-shape rules by hand.** These catch machine-written
 prose faster than vocabulary does.
 
 - **Keep the verb next to what it acts on.** English default is `[verb] [direct
@@ -338,16 +437,16 @@ prose faster than vocabulary does.
   "pruning logic". "The location count" becomes "how many locations they run".
   "Delivery is by an agent" becomes "an agent delivers it".
 
-**7.5 Strip the AI-slop vocabulary.** Load-bearing, delve, crucial, robust,
+**8.5 Strip the AI-slop vocabulary.** Load-bearing, delve, crucial, robust,
 leverage, and their kin. Also: "here's the thing", any three-item flourish where
 two items would do, and any sentence that exists to announce what the next
 sentence will say.
 
-**7.6 Optionally run a de-slopping pass.** The public `unslop` skill does this
+**8.6 Optionally run a de-slopping pass.** The public `unslop` skill does this
 well if it is installed. It is a cleanup pass on a finished draft, never a first
 pass.
 
-**7.7 Apply the platform format rules.** Details and confidence levels in
+**8.7 Apply the platform format rules.** Details and confidence levels in
 `reference/format-research.md`.
 
 - **Hook: first two lines.** Truncation lands around 200-210 characters on
@@ -363,58 +462,112 @@ pass.
   minutes decide reach and comments are the strongest signal in that window, so
   this is the highest-value line in the post.
 
-**7.8 Final check.** Read the first two lines out loud. If they sound like
+**8.8 Final check.** Read the first two lines out loud. If they sound like
 something the user would say to someone across a table, keep them. If they sound
 like a headline, rewrite.
 
 ---
 
-## Step 8/10 -- Schedule
+## Step 9/12 -- The restraint pass
 
-**8.1 Day.** Tuesday to Thursday. Every study agrees these beat Monday and
+Run this on every draft Step 8 produced. It is a subtraction pass. Nothing gets
+added here. A voice draft usually runs about 30% longer than it needs to and
+warmer than the writer actually is. Because this step cuts that much text,
+re-check the length and hook rules in 8.7 against the shortened version when you
+are done.
+
+**9.1 Cut sentences that introduce an emotion or announce what is coming.** They
+carry no information and they make the writer sound like they are performing. Say
+the thing rather than framing the thing.
+
+| Cut | Why |
+|---|---|
+| "The reason is boring." | Announces a tone. Just give the reason. |
+| "Here is what we do." | Announces a paragraph that follows anyway. |
+| "I have a result from our own tests that I do not believe yet, and I would rather say that out loud than sit on it." | Two clauses of throat-clearing before the result. Open on the result. |
+
+**9.2 Remove confident declaratives about what other people do or do not do.** The
+test: does the sentence claim knowledge of a population the writer has not
+measured? If yes, narrow it to what they actually saw, or cut it.
+
+| Overconfident | Humble and true |
+|---|---|
+| "The check nobody seems to run is the obvious one" | "I have not seen anyone look at what the agents in their own category are asking." |
+| "it is expensive enough that hardly anyone wants to run it" | "it costs enough that we have not managed to run it properly ourselves yet." |
+
+Also cut "almost nobody", "everyone is still", "most of the market", and any
+sentence that tells readers what their own industry believes.
+
+**9.3 Merge or cut until the draft is about 30% shorter.** Two sentences carrying
+one idea become one sentence. A paragraph restating the paragraph above it goes.
+Keep the numbers and the mechanism. Those are what the post is for.
+
+**9.4 Rewrite the closing question so a stranger can answer it.** The question
+should be one the writer genuinely does not know the answer to, open rather than
+yes or no, and general enough that people outside their exact niche want to weigh
+in. Answering it should make a reader look knowledgeable rather than merely
+responsive.
+
+| Too narrow | Better |
+|---|---|
+| "Which side is your category on?" | "Does anyone know how to seed a brand into an LLM's training data, as opposed to just its retrieval?" |
+| "Has anyone run that comparison on their own product?" | "How is anyone measuring where their customers actually first heard about them?" |
+
+**9.5 Read the result for tone.** Calm, humble, curious, friendly. The post asks
+rather than tells. If any sentence would sound smug read aloud, it goes.
+
+---
+
+## Step 10/12 -- Schedule
+
+**10.1 Day.** Tuesday to Thursday. Every study agrees these beat Monday and
 weekends, and Wednesday is the most consistent.
 
-**8.2 Time.** Pick one window that catches the working hours of the largest slice
+**10.2 Time.** Pick one window that catches the working hours of the largest slice
 of the user's audience, and say which slice it is. For an audience split across
 continents, a morning slot in the user's own timezone often catches the evening in
 another. The published studies disagree outright about time of day, so do not
 over-fit: hold one window for six weeks, then read the user's own analytics.
 
-**8.3 Cadence by volume.**
+**10.3 Cadence by volume.**
 
 - 2-3 posts: one week, Tue / Wed / Thu.
 - 4-6 posts: two weeks, three per week.
 - 10-15 posts: a bank. Schedule the first three, list the rest as undated stock
   ranked by score.
 
-**8.4 Mix by shape.** If two candidates share a shape, push one to the following
+**10.4 Mix by shape.** If two candidates share a shape, push one to the following
 week. A feed of one shape reads as a formula.
 
-**8.5 Three a week is the ceiling worth recommending.** Five a week is a cadence
+**10.5 Three a week is the ceiling worth recommending.** Five a week is a cadence
 most people drop, and a dropped cadence reads worse than a steady low one. If the
 user currently posts monthly, weekly is already a large change.
 
 ---
 
-## Step 9/10 -- Write out
+## Step 11/12 -- Write out
 
-**9.1 Write to `OUTPUT_DIR/<YYYY-MM-DD>-week.md`** (default `./linkedin-drafts/`).
+**11.1 Write to `OUTPUT_DIR/<YYYY-MM-DD>-week.md`** (default `./linkedin-drafts/`).
 
-**9.2 Per post, include:** day and time, the source meeting id and date so the
+**11.2 Per post, include:** day and time, the source meeting id and date so the
 claim traces back, the shape, the confidentiality verdict, the full draft text,
 the first comment if there is a link, and the character count.
 
-**9.3 Add a Backlog section** for candidates that scored but did not ship, each
+**11.3 Add a Backlog section** for candidates that scored but did not ship, each
 with the reason it was held.
 
-**9.4 Record the settings** at the top of the file so the next run can read
+**11.4 Record the settings** at the top of the file so the next run can read
 `PROFILE`, `NOTES_SOURCE`, and the window back.
+
+**11.5 Fill in the `drafted` field** in `DECISION_LOG` for every candidate that
+made it into the file, naming the file the post landed in. Without this the next
+run offers the same insight again.
 
 ---
 
-## Step 10/10 -- Hand off
+## Step 12/12 -- Hand off
 
-**10.1 Give the user one way to edit and one way to hand the file to whoever else
+**12.1 Give the user one way to edit and one way to hand the file to whoever else
 posts.** Pick whichever fits their setup:
 
 - The markdown file on its own, if they work locally.
@@ -424,10 +577,10 @@ posts.** Pick whichever fits their setup:
   already have open.
 - A pull request, if the drafts live in a repo alongside other content.
 
-**10.2 Add one line to `TASK_SINK`:** `Post LinkedIn draft 1 (Tue 8am) --
+**12.2 Add one line to `TASK_SINK`:** `Post LinkedIn draft 1 (Tue 8am) --
 <path>`. One task, not three. The file holds the rest.
 
-**10.3 Report back** with the count, the shapes used, and anything blocked on
+**12.3 Report back** with the count, the shapes used, and anything blocked on
 permission.
 
 ---
@@ -439,9 +592,13 @@ permission.
 - Does not invent a statistic. Every number traces to a meeting id.
 - Does not produce five posts a week because five is a rounder number.
 - Does not read a raw transcript when a summary exists.
+- Does not draft a candidate the user has not approved.
 
 ## Reference files
 
+- `OUTPUT_DIR/decisions.jsonl` -- the decision log. Read at Step 4, written at
+  Step 7, closed out at Step 11. It sits with the drafts rather than in the skill
+  directory, because it is data rather than instruction.
 - `reference/example-extracted-style.md` -- a finished style extraction, kept as a
   worked example of Step 3 output. Read it for structure, not for voice.
 - `reference/format-research.md` -- LinkedIn format research with confidence
